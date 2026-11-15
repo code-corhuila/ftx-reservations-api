@@ -1,0 +1,34 @@
+# ftx-reservations-api container (Annex J.7).
+#
+# This repository does NOT define a database or a broker: the single PostgreSQL instance lives in
+# ftx-infra-postgres and the whole platform (broker included) is composed by ftx-workflow, which
+# include this file:
+#
+#   include:
+#     - path: ../ftx-reservations-api/deploy/compose.yml
+#
+# Requires: postgres up, ftx-reservations-db migrated, ftx-schedules-api reachable.
+services:
+  ftx-reservations-api:
+    build: ..                               # this repository's Dockerfile
+    image: ftx-reservations-api:local
+    restart: unless-stopped
+    environment:
+      # "postgres" is the service name of the single instance in the platform network.
+      RESERVATIONS_DB_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?set PG_DATABASE in the env file}
+      RESERVATIONS_DB_USER: reservations_app
+      RESERVATIONS_DB_PASSWORD: ${RESERVATIONS_APP_PASSWORD:?set RESERVATIONS_APP_PASSWORD in the env file}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in the env file}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in the env file}
+      RESERVATIONS_MESSAGING_ENABLED: ${RESERVATIONS_MESSAGING_ENABLED:-true}
+      SCHEDULES_API_URL: http://ftx-schedules-api:8085
+      RESERVATIONS_AUTH_JWKS_URL: http://ftx-customers-api:8081/api/v1/auth/jwks
+    ports:
+      - "${RESERVATIONS_API_PORT:-8083}:8083"
+    networks: [platform]
+
+networks:
+  platform:
+    name: ${PLATFORM_NETWORK:-platform}
+    external: true
