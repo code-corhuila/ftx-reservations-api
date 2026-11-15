@@ -3,6 +3,7 @@ package com.futbolix.reservations.adapter.out.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.futbolix.reservations.application.ReservationService;
 import com.futbolix.reservations.application.SlotUnavailableException;
@@ -168,7 +169,7 @@ class ReservationDatabaseIntegrationTest {
     }
 
     @Test
-    void creatingThroughTheUseCaseWritesTheReservationTheKeyAndTheEventTogether() {
+    void creatingThroughTheUseCaseWritesTheReservationTheKeyAndTheEventTogether() throws Exception {
         Transactions tx = new Transactions() {
             @Override
             public <T> T inTransaction(Supplier<T> work) {
@@ -190,8 +191,11 @@ class ReservationDatabaseIntegrationTest {
         assertThat(replayed.id()).isEqualTo(created.id());
         String payload = jdbc.sql("SELECT payload::text FROM reservations.outbox_event WHERE aggregate_id = :id")
                 .param("id", created.id()).query(String.class).single();
-        assertThat(payload).contains("\"eventType\":\"ReservationCreated\"", "\"amount\":120000")
-                .doesNotContain("3000000000");   // the phone never travels in an event
+        JsonNode event = new ObjectMapper().readTree(payload);
+        assertThat(event.get("eventType").asText()).isEqualTo("ReservationCreated");
+        assertThat(event.get("payload").get("amount").asLong()).isEqualTo(120_000L);
+        assertThat(event.get("payload").has("customerPhone")).isFalse();   // the phone never travels in an event
+        assertThat(payload).doesNotContain("3000000000");
     }
 
     @Test

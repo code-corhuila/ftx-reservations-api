@@ -112,15 +112,20 @@ class ReservationControllerTest {
     }
 
     @Test
-    void aBrokenBusinessRuleIs422AndAnUnknownCourtIs404() throws Exception {
+    void aBrokenBusinessRuleIs422() throws Exception {
         when(useCases.create(any())).thenThrow(new BusinessRuleViolationException("startTime", "The start time is in the past"));
+
         mvc.perform(post("/api/v1/reservations").header("Idempotency-Key", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("BUSINESS_RULE_VIOLATION"))
                 .andExpect(jsonPath("$.details[0].field").value("startTime"));
+    }
 
+    @Test
+    void anUnknownCourtIs404() throws Exception {
         when(useCases.create(any())).thenThrow(new CourtNotFoundException());
+
         mvc.perform(post("/api/v1/reservations").header("Idempotency-Key", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isNotFound())
