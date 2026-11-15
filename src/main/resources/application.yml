@@ -1,0 +1,78 @@
+# ftx-reservations-api. Every value that changes per environment comes from an environment variable.
+server:
+  port: ${PORT:8083}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: ftx-reservations-api
+  datasource:
+    # reservations_app is created by ftx-infra-postgres and receives reservations_writer from ftx-reservations-db.
+    url: ${RESERVATIONS_DB_URL:jdbc:postgresql://postgres:5432/ftx}
+    username: ${RESERVATIONS_DB_USER:reservations_app}
+    # No default on purpose: without a password the service does not start.
+    password: ${RESERVATIONS_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${RESERVATIONS_DB_POOL_SIZE:10}
+  flyway:
+    enabled: false                       # the schema belongs to ftx-reservations-db; this API never migrates
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true   # CreateReservationRequest has additionalProperties: false
+  mvc:
+    problemdetails:
+      enabled: false                     # errors use ErrorResponse of _shared.yaml
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:futbolix}
+    # No default on purpose (M2: no credential in the code).
+    password: ${RABBITMQ_PASSWORD:}
+    connection-timeout: 2s               # a broker outage must not hold the outbox relay
+    publisher-confirm-type: simple       # the relay marks an event published only after the broker confirms it
+    listener:
+      simple:
+        auto-startup: ${RESERVATIONS_MESSAGING_ENABLED:true}
+        default-requeue-rejected: false  # a failing message goes to the dead-letter queue, never loops
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
+
+reservations:
+  time-zone: ${RESERVATIONS_TIME_ZONE:America/Bogota}
+  messaging:
+    # false: no publisher and no consumer; events stay in reservations.outbox_event until it is true.
+    enabled: ${RESERVATIONS_MESSAGING_ENABLED:true}
+  outbox:
+    relay-interval-ms: ${RESERVATIONS_OUTBOX_INTERVAL_MS:1000}
+    batch-size: 50
+  schedules-api:
+    url: ${SCHEDULES_API_URL:http://ftx-schedules-api:8085}
+    timeout: ${SCHEDULES_API_TIMEOUT:2s}
+  auth:
+    # Public keys of the administrator access tokens, published by ftx-customers-api (ADR-012).
+    jwks-url: ${RESERVATIONS_AUTH_JWKS_URL:http://ftx-customers-api:8081/api/v1/auth/jwks}
+    issuer: ${RESERVATIONS_AUTH_ISSUER:ftx-customers-api}
+
+management:
+  endpoints:
+    web:
+      base-path: /                       # GET /health, /health/liveness, /health/readiness
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    rabbit:
+      enabled: false                     # the broker is optional for this service: see HealthController
+
+logging:
+  structured:
+    format:
+      console: ecs                       # JSON lines with correlationId (13-operations/observability.md)
